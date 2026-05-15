@@ -9,7 +9,7 @@
 
 ---
 
-## 🎯 What is this?
+## 🎯 What is this ?
 
 AI Personal Learning OS is an **intelligent education platform** that automatically generates personalized learning experiences from your uploaded materials. It's not just a chatbot — it's:
 
