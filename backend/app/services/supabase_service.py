@@ -22,7 +22,8 @@ class SupabaseService:
     # ─── Auth ──────────────────────────────────────────────
 
     async def sign_up(self, email: str, password: str, full_name: str) -> dict:
-        """Register a new user."""
+        """Register a new user, auto-confirm email, and return a live session."""
+        # Step 1: Create the user in auth.users
         response = self.client.auth.sign_up({
             "email": email,
             "password": password,
@@ -30,28 +31,147 @@ class SupabaseService:
                 "data": {"full_name": full_name}
             }
         })
+
+        user = response.user
+        if not user:
+            raise Exception("Signup failed: no user returned from Supabase.")
+
+        print(f"[AUTH] sign_up: user created — id={user.id}, email={email}")
+
+        # Step 2: Auto-confirm email using admin API (requires service_role key)
+        # This bypasses the email-confirmation requirement entirely.
+        try:
+            self.client.auth.admin.update_user_by_id(
+                user.id,
+                {"email_confirm": True}
+            )
+            print(f"[AUTH] sign_up: email auto-confirmed for {email}")
+        except Exception as confirm_err:
+            print(f"[WARN] Could not auto-confirm email: {confirm_err}")
+
+        # Step 3: Sign in immediately so the client gets a valid session token
+        try:
+            login_resp = self.client.auth.sign_in_with_password({
+                "email": email,
+                "password": password
+            })
+            session = login_resp.session
+            print(f"[AUTH] sign_up: immediate sign-in succeeded for {email}")
+        except Exception as login_err:
+            print(f"[WARN] Immediate sign-in after signup failed: {login_err}")
+            session = response.session  # fallback to signup session (may be None)
+
+        # Step 4: Persist profile into public.user_profiles
+        try:
+            self.client.table("user_profiles").upsert({
+                "id": user.id,
+                "email": email,
+                "full_name": full_name,
+                "avatar_url": "",
+                "role": "student",
+                "is_active": True
+            }, on_conflict="id").execute()
+            print(f"[AUTH] sign_up: user_profile saved for {email}")
+        except Exception as profile_err:
+            print(f"[WARN] Could not upsert user_profile: {profile_err}")
+
+        # Step 5: Log registration event
+        try:
+            self.client.table("auth_sessions").insert({
+                "user_id": user.id,
+                "event": "register",
+                "status": "success"
+            }).execute()
+        except Exception as session_err:
+            print(f"[WARN] Could not log auth_session (register): {session_err}")
+
+        if not session:
+            raise Exception(
+                "Account created but could not start a session. "
+                "Please try logging in directly."
+            )
+
         return {
-            "access_token": response.session.access_token if response.session else "",
-            "refresh_token": response.session.refresh_token if response.session else "",
-            "user_id": response.user.id if response.user else "",
+            "access_token": session.access_token,
+            "refresh_token": session.refresh_token,
+            "user_id": user.id,
             "email": email,
             "full_name": full_name
         }
 
     async def sign_in(self, email: str, password: str) -> dict:
-        """Sign in an existing user."""
-        response = self.client.auth.sign_in_with_password({
-            "email": email,
-            "password": password
-        })
-        user_meta = response.user.user_metadata if response.user else {}
+        """Sign in an existing user and log the session."""
+        try:
+            response = self.client.auth.sign_in_with_password({
+                "email": email,
+                "password": password
+            })
+        except Exception as e:
+            # Log failed attempt if we can resolve the user
+            print(f"[AUTH] sign_in FAILED for {email}: {e}")
+            raise  # re-raise so the caller sees the real error
+
+        user = response.user
+        session = response.session
+        user_meta = user.user_metadata if user else {}
+
+        # Ensure user_profile row exists (covers users registered before this fix)
+        if user:
+            try:
+                self.client.table("user_profiles").upsert({
+                    "id": user.id,
+                    "email": email,
+                    "full_name": user_meta.get("full_name", ""),
+                    "avatar_url": user_meta.get("avatar_url", ""),
+                    "role": "student",
+                    "is_active": True
+                }, on_conflict="id").execute()
+            except Exception as profile_err:
+                print(f"[WARN] Could not upsert user_profile on login: {profile_err}")
+
+            # Log successful login
+            try:
+                self.client.table("auth_sessions").insert({
+                    "user_id": user.id,
+                    "event": "login",
+                    "status": "success"
+                }).execute()
+            except Exception as session_err:
+                print(f"[WARN] Could not log auth_session (login): {session_err}")
+
         return {
-            "access_token": response.session.access_token,
-            "refresh_token": response.session.refresh_token,
-            "user_id": response.user.id,
+            "access_token": session.access_token,
+            "refresh_token": session.refresh_token,
+            "user_id": user.id,
             "email": email,
             "full_name": user_meta.get("full_name", "")
         }
+
+    async def confirm_and_login(self, email: str, password: str) -> dict:
+        """
+        Force-confirm an unconfirmed user's email via admin API, then sign them in.
+        Used as a recovery path for accounts created before auto-confirm was enabled.
+        """
+        # Find the user by email using the admin API
+        users_resp = self.client.auth.admin.list_users()
+        target_user = None
+        for u in (users_resp or []):
+            if u.email == email:
+                target_user = u
+                break
+
+        if not target_user:
+            raise Exception("No account found with that email address.")
+
+        # Confirm the email
+        self.client.auth.admin.update_user_by_id(
+            target_user.id,
+            {"email_confirm": True}
+        )
+        print(f"[AUTH] confirm_and_login: confirmed email for {email}")
+
+        # Now sign in normally
+        return await self.sign_in(email, password)
 
     async def get_user(self, token: str) -> Optional[dict]:
         """Get user from JWT token."""

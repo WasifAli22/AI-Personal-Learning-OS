@@ -85,6 +85,7 @@ async def upload_document(
             created_at=saved.get("created_at", "")
         )
     except Exception as e:
+        print(f"DB Save Error: {e}")
         # Still return success if RAG worked but DB save failed
         return DocumentUploadResponse(
             id=doc_id,

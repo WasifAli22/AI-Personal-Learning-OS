@@ -15,19 +15,19 @@ from app.api.learning import router as learning_router
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application startup/shutdown lifecycle."""
-    print("🚀 AI Personal Learning OS starting...")
-    print("📚 Initializing RAG pipeline...")
+    print("[START] AI Personal Learning OS starting...")
+    print("[INIT] Initializing RAG pipeline...")
     # Pre-initialize services on startup
     try:
         from app.rag.pipeline import get_rag_pipeline
         get_rag_pipeline()
-        print("✅ RAG pipeline ready")
+        print("[OK] RAG pipeline ready")
     except Exception as e:
-        print(f"⚠️ RAG pipeline init deferred: {e}")
+        print(f"[WARN] RAG pipeline init deferred: {e}")
 
     yield
 
-    print("👋 AI Personal Learning OS shutting down...")
+    print("[STOP] AI Personal Learning OS shutting down...")
 
 
 app = FastAPI(

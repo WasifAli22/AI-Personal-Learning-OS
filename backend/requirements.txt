@@ -7,8 +7,6 @@ pydantic-settings==2.5.2
 
 # AI & LLM
 google-generativeai==0.8.3
-langchain==0.3.7
-langchain-google-genai==2.0.4
 langchain-community==0.3.5
 langchain-text-splitters==0.3.2
 
@@ -19,14 +17,9 @@ chromadb==0.5.18
 # Document Processing
 PyPDF2==3.0.1
 python-docx==1.1.0
-unstructured==0.16.5
-
-# CrewAI Agents
-crewai==0.86.0
-crewai-tools==0.14.0
 
 # Supabase
-supabase==2.10.0
+supabase==2.30.0
 
 # Utilities
 python-dotenv==1.0.1
