@@ -32,8 +32,9 @@ class PlannerAgent(BaseAgent):
                             duration_weeks: int = 4, daily_hours: float = 1.0,
                             skill_level: str = "beginner") -> dict:
         content = await self.rag.get_all_content(user_id, document_ids)
+        # Fall back to general content if no documents uploaded
         if not content:
-            return {"error": "No content found. Please upload learning materials first."}
+            content = "general knowledge, study skills, and academic topics"
         roadmap = await self.ai.generate_roadmap(content, duration_weeks, daily_hours, skill_level)
         return roadmap
 
@@ -78,8 +79,9 @@ class QuizAgent(BaseAgent):
                            difficulty: str = "medium",
                            question_types: List[str] = None) -> dict:
         content = await self.rag.get_all_content(user_id, document_ids)
+        # Fall back to topic if no uploaded content
         if not content:
-            return {"error": "No content found. Please upload learning materials first."}
+            content = topic if topic else "general knowledge and common study topics"
         quiz = await self.ai.generate_quiz(content, num_questions, difficulty, question_types)
         return quiz
 
@@ -128,8 +130,9 @@ class RevisionAgent(BaseAgent):
     async def generate_flashcards(self, user_id: str, document_ids: List[str] = None,
                                   topic: str = None, num_cards: int = 20) -> dict:
         content = await self.rag.get_all_content(user_id, document_ids)
+        # Fall back to topic if no uploaded content
         if not content:
-            return {"error": "No content found. Please upload learning materials first."}
+            content = topic if topic else "general knowledge and common study topics"
         return await self.ai.generate_flashcards(content, num_cards, topic)
 
 

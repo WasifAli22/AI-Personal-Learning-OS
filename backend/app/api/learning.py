@@ -93,6 +93,7 @@ async def generate_quiz(request: QuizGenerateRequest, authorization: Optional[st
     )
 
     if "error" in quiz_data:
+        print(f"API ERROR in generate_quiz: {quiz_data['error']}")
         raise HTTPException(status_code=400, detail=quiz_data["error"])
 
     # Add IDs to questions

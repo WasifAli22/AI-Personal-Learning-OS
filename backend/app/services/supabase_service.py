@@ -400,12 +400,16 @@ class SupabaseService:
         """Identify topics where user scores are low."""
         topic_scores = {}
         for q in quiz_results:
-            wrong = q.get("wrong_answers", "[]")
+            wrong = q.get("wrong_answers") or "[]"
             if isinstance(wrong, str):
                 try:
                     wrong = json.loads(wrong)
                 except Exception:
                     wrong = []
+            
+            if not isinstance(wrong, list):
+                wrong = []
+
             for w in wrong:
                 topic = w.get("topic", "General")
                 topic_scores.setdefault(topic, []).append(0)
