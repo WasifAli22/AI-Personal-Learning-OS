@@ -3,7 +3,7 @@ import sys
 import os
 sys.stdout.reconfigure(encoding='utf-8')
 
-os.environ['GROQ_API_KEY'] = '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'
+os.environ['GROQ_API_KEY'] = ''
 
 from app.services.ai_service import AIService
 
