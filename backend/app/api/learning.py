@@ -52,7 +52,8 @@ async def chat(request: ChatRequest, authorization: Optional[str] = Header(None)
     result = await orch.tutor.answer_question(
         query=request.message,
         user_id=user_id,
-        document_ids=request.document_ids
+        document_ids=request.document_ids,
+        chat_history=request.chat_history or []
     )
 
     conv_id = request.conversation_id or str(uuid.uuid4())

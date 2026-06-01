@@ -91,18 +91,35 @@ class AIService:
     # ──────────────────────────────────────────────────────────
 
     async def chat_with_context(self, query: str, context: str, chat_history: List[dict] = None) -> str:
-        """RAG-powered chat: answer from provided context only."""
-        system = (
-            "You are an expert AI tutor. Answer ONLY from the provided context. "
-            "If the answer isn't in the context, say so clearly. "
-            "Explain in a friendly, step-by-step way with examples where helpful.\n\n"
-            f"CONTEXT:\n---\n{context}\n---"
-        )
+        """RAG-powered chat: answer strictly from uploaded document context only."""
+        if context and context.strip():
+            system = (
+                "You are a helpful AI tutor. You MUST answer ONLY using the study material provided below. "
+                "Do NOT use any outside knowledge or general information. "
+                "If the answer cannot be found in the provided material, say exactly: "
+                "'I couldn't find that information in your uploaded materials. Please try rephrasing your question or upload more relevant documents.' "
+                "Be clear, structured, and use bullet points or numbered steps when helpful.\n\n"
+                "UPLOADED STUDY MATERIAL:\n"
+                "=" * 60 + "\n"
+                f"{context}\n"
+                "=" * 60
+            )
+        else:
+            system = (
+                "You are a helpful AI tutor. The student has not uploaded any study materials yet. "
+                "Inform them that they need to upload documents (PDF, DOCX, TXT) on the Upload page first, "
+                "then you can answer questions specifically about those materials. "
+                "Do not answer general questions — only questions about uploaded materials."
+            )
+
         messages = [{"role": "system", "content": system}]
+
+        # Include conversation history for continuity (last 8 messages)
         if chat_history:
-            for msg in chat_history[-6:]:
+            for msg in chat_history[-8:]:
                 role = "user" if msg["role"] == "user" else "assistant"
                 messages.append({"role": role, "content": msg["content"]})
+
         messages.append({"role": "user", "content": query})
 
         try:
@@ -110,11 +127,11 @@ class AIService:
                 model=self.model,
                 messages=messages,
                 max_tokens=1024,
-                temperature=0.5,
+                temperature=0.2,
             )
             return response.choices[0].message.content or "I couldn't generate a response. Please try again."
         except Exception as e:
-            return f"I encountered an error: {str(e)}. Please try again."
+            return f"An error occurred: {str(e)}. Please try again."
 
     # ──────────────────────────────────────────────────────────
     # Quiz Generation

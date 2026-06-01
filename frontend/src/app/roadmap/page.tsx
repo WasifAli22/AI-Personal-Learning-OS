@@ -2,15 +2,18 @@
 
 import AppShell from "@/components/app-shell";
 import { motion } from "framer-motion";
-import { Map, CheckCircle2, Circle, Clock, Loader2, Sparkles, ChevronDown, ChevronRight } from "lucide-react";
+import {
+  Map, CheckCircle2, Circle, Clock, Loader2, Sparkles,
+  ChevronDown, ChevronRight, FileText, AlertTriangle
+} from "lucide-react";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { roadmapAPI } from "@/services/api";
+import { roadmapAPI, documentsAPI } from "@/services/api";
 
 export default function RoadmapPage() {
   const [expandedWeek, setExpandedWeek] = useState<number | null>(1);
-  const [generating, setGenerating] = useState(false);
   const [config, setConfig] = useState({ duration_weeks: 4, daily_hours: 1, skill_level: "beginner" });
+  const [selectedDocs, setSelectedDocs] = useState<string[]>([]);
   const queryClient = useQueryClient();
 
   const { data: roadmap, isLoading } = useQuery({
@@ -19,14 +22,31 @@ export default function RoadmapPage() {
     retry: false,
   });
 
+  const { data: documents = [] } = useQuery({
+    queryKey: ["documents"],
+    queryFn: documentsAPI.list,
+    retry: false,
+  });
+
   const generateMutation = useMutation({
     mutationFn: roadmapAPI.generate,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["roadmap"] });
-      setGenerating(false);
     },
-    onError: () => setGenerating(false),
   });
+
+  const toggleDoc = (id: string) => {
+    setSelectedDocs((prev) =>
+      prev.includes(id) ? prev.filter((d) => d !== id) : [...prev, id]
+    );
+  };
+
+  const handleGenerate = () => {
+    generateMutation.mutate({
+      ...config,
+      document_ids: selectedDocs.length > 0 ? selectedDocs : undefined,
+    });
+  };
 
   const tasks = roadmap?.tasks || [];
   const parsedTasks = typeof tasks === "string" ? JSON.parse(tasks) : tasks;
@@ -107,10 +127,47 @@ export default function RoadmapPage() {
               </div>
             </div>
 
+            {/* Document Selector */}
+            {(documents as any[]).length > 0 && (
+              <div className="mb-5 text-left">
+                <label className="text-sm font-medium mb-2 block flex items-center gap-1.5">
+                  <FileText className="w-4 h-4 text-primary" />
+                  Source Documents
+                  <span className="text-muted-foreground font-normal text-xs">(optional)</span>
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {(documents as any[]).map((doc: any) => {
+                    const selected = selectedDocs.includes(doc.id);
+                    return (
+                      <button
+                        key={doc.id}
+                        onClick={() => toggleDoc(doc.id)}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
+                          selected
+                            ? "border-primary bg-primary/15 text-primary"
+                            : "border-border hover:border-primary/50 text-muted-foreground"
+                        }`}
+                      >
+                        <FileText className="w-3 h-3" />
+                        <span className="max-w-[150px] truncate">{doc.filename}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {generateMutation.isError && (
+              <div className="mb-4 p-3 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-sm flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                {(generateMutation.error as Error)?.message || "Failed to generate roadmap. Please try again."}
+              </div>
+            )}
+
             <button
-              onClick={() => { setGenerating(true); generateMutation.mutate(config); }}
+              onClick={handleGenerate}
               disabled={generateMutation.isPending}
-              className="btn-primary w-full py-3"
+              className="btn-primary w-full py-3 flex items-center justify-center gap-2"
             >
               {generateMutation.isPending ? (
                 <><Loader2 className="w-4 h-4 animate-spin" /> Generating Roadmap...</>
@@ -118,6 +175,7 @@ export default function RoadmapPage() {
                 <><Sparkles className="w-4 h-4" /> Generate with AI</>
               )}
             </button>
+
           </motion.div>
         ) : (
           <div className="space-y-4">

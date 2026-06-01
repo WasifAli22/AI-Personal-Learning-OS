@@ -58,9 +58,20 @@ async def upload_document(
     try:
         if ext == ".pdf":
             chunk_count = await rag.process_pdf(file_path, user_id, doc_id)
-        else:
-            text_content = content.decode("utf-8", errors="ignore")
+        elif ext == ".docx":
+            from app.rag.pipeline import _extract_docx_text
+            text_content = _extract_docx_text(file_path)
+            if not text_content.strip():
+                raise HTTPException(status_code=422, detail="Could not extract text from DOCX. The file may be empty or corrupted.")
             chunk_count = await rag.process_text(text_content, user_id, doc_id, file.filename)
+        else:
+            # .txt and .md — plain UTF-8
+            text_content = content.decode("utf-8", errors="ignore")
+            if not text_content.strip():
+                raise HTTPException(status_code=422, detail="File appears to be empty.")
+            chunk_count = await rag.process_text(text_content, user_id, doc_id, file.filename)
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
 
@@ -117,8 +128,30 @@ async def list_documents(authorization: Optional[str] = Header(None)):
 
 @router.delete("/{doc_id}")
 async def delete_document(doc_id: str, authorization: Optional[str] = Header(None)):
-    """Delete a document and its embeddings."""
+    """Delete a document: remove embeddings, DB record, and uploaded file."""
     user_id = await _get_user_id(authorization)
+    settings = get_settings()
+
+    # 1. Delete embeddings from ChromaDB
     rag = get_rag_pipeline()
     await rag.delete_document(user_id, doc_id)
+
+    # 2. Delete from Supabase database
+    svc = get_supabase_service()
+    try:
+        svc.client.table("documents").delete().eq("id", doc_id).eq("user_id", user_id).execute()
+    except Exception as e:
+        print(f"[DELETE] Supabase delete failed: {e}")
+
+    # 3. Delete the physical file from disk
+    upload_dir = os.path.join(settings.upload_dir, user_id)
+    for ext in [".pdf", ".docx", ".txt", ".md"]:
+        candidate = os.path.join(upload_dir, f"{doc_id}{ext}")
+        if os.path.exists(candidate):
+            try:
+                os.remove(candidate)
+            except Exception as e:
+                print(f"[DELETE] File removal failed: {e}")
+            break
+
     return {"status": "deleted"}

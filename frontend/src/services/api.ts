@@ -40,7 +40,7 @@ export const documentsAPI = {
 
 // Chat
 export const chatAPI = {
-  send: (data: { message: string; document_ids?: string[]; conversation_id?: string }) =>
+  send: (data: { message: string; document_ids?: string[]; conversation_id?: string; chat_history?: { role: string; content: string }[] }) =>
     fetchAPI("/chat", { method: "POST", body: JSON.stringify(data) }),
 };
 

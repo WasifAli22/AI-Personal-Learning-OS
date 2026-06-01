@@ -2,17 +2,32 @@
 
 import AppShell from "@/components/app-shell";
 import { motion, AnimatePresence } from "framer-motion";
-import { Brain, CheckCircle, XCircle, Loader2, Sparkles, Trophy, AlertTriangle } from "lucide-react";
+import {
+  Brain, CheckCircle, XCircle, Loader2, Sparkles, Trophy,
+  AlertTriangle, FileText, ChevronDown
+} from "lucide-react";
 import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
-import { quizAPI } from "@/services/api";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { quizAPI, documentsAPI } from "@/services/api";
 
 export default function QuizzesPage() {
   const [quiz, setQuiz] = useState<any>(null);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [result, setResult] = useState<any>(null);
   const [currentQ, setCurrentQ] = useState(0);
-  const [config, setConfig] = useState({ num_questions: 10, difficulty: "medium" });
+  const [selectedDocs, setSelectedDocs] = useState<string[]>([]);
+  const [config, setConfig] = useState({
+    num_questions: 5,
+    difficulty: "medium",
+    question_types: ["mcq"] as string[],
+  });
+
+  // Load user's documents for selection
+  const { data: documents = [] } = useQuery({
+    queryKey: ["documents"],
+    queryFn: documentsAPI.list,
+    retry: false,
+  });
 
   const generateMutation = useMutation({
     mutationFn: quizAPI.generate,
@@ -38,6 +53,19 @@ export default function QuizzesPage() {
     submitMutation.mutate({ quiz_id: quiz.id, answers });
   };
 
+  const toggleDoc = (id: string) => {
+    setSelectedDocs((prev) =>
+      prev.includes(id) ? prev.filter((d) => d !== id) : [...prev, id]
+    );
+  };
+
+  const handleGenerate = () => {
+    generateMutation.mutate({
+      ...config,
+      document_ids: selectedDocs.length > 0 ? selectedDocs : undefined,
+    });
+  };
+
   const questions = quiz?.questions || [];
   const currentQuestion = questions[currentQ];
 
@@ -45,29 +73,86 @@ export default function QuizzesPage() {
     <AppShell>
       <div className="page-container">
         <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="page-header">
-          <h1 className="page-title">AI <span className="gradient-text">Quizzes</span></h1>
+          <h1 className="page-title">
+            AI <span className="gradient-text">Quizzes</span>
+          </h1>
           <p className="page-subtitle">Test your knowledge with AI-generated assessments</p>
         </motion.div>
 
-        {/* Generate Quiz */}
+        {/* Generate Quiz Panel */}
         {!quiz && !result && (
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-8 max-w-xl mx-auto text-center">
-            <div className="w-16 h-16 rounded-2xl bg-primary/15 flex items-center justify-center mx-auto mb-6">
-              <Brain className="w-8 h-8 text-primary" />
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="glass-card p-8 max-w-2xl mx-auto"
+          >
+            <div className="flex flex-col items-center mb-6">
+              <div className="w-16 h-16 rounded-2xl bg-primary/15 flex items-center justify-center mb-4">
+                <Brain className="w-8 h-8 text-primary" />
+              </div>
+              <h2 className="text-xl font-bold mb-1">Generate a Quiz</h2>
+              <p className="text-muted-foreground text-sm text-center">
+                AI will create questions from your uploaded materials
+              </p>
             </div>
-            <h2 className="text-xl font-bold mb-2">Generate a Quiz</h2>
-            <p className="text-muted-foreground text-sm mb-6">AI will create questions from your uploaded materials</p>
 
-            <div className="grid grid-cols-2 gap-4 text-left mb-6">
+            {/* Document Selector */}
+            {documents.length > 0 && (
+              <div className="mb-5">
+                <label className="text-sm font-medium mb-2 block flex items-center gap-1.5">
+                  <FileText className="w-4 h-4 text-primary" />
+                  Source Documents
+                  <span className="text-muted-foreground font-normal">(optional — leave blank to use all)</span>
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {documents.map((doc: any) => {
+                    const selected = selectedDocs.includes(doc.id);
+                    return (
+                      <button
+                        key={doc.id}
+                        onClick={() => toggleDoc(doc.id)}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
+                          selected
+                            ? "border-primary bg-primary/15 text-primary"
+                            : "border-border hover:border-primary/50 text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        <FileText className="w-3 h-3" />
+                        <span className="max-w-[150px] truncate">{doc.filename}</span>
+                        {selected && <CheckCircle className="w-3 h-3 flex-shrink-0" />}
+                      </button>
+                    );
+                  })}
+                </div>
+                {selectedDocs.length > 0 && (
+                  <p className="text-xs text-primary mt-2">
+                    ✓ Using {selectedDocs.length} selected document{selectedDocs.length > 1 ? "s" : ""}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Config Row */}
+            <div className="grid grid-cols-2 gap-4 mb-5">
               <div>
                 <label className="text-sm font-medium mb-1.5 block">Questions</label>
-                <select value={config.num_questions} onChange={(e) => setConfig({ ...config, num_questions: +e.target.value })} className="input-field">
-                  {[5, 10, 15, 20].map((n) => <option key={n} value={n}>{n} questions</option>)}
+                <select
+                  value={config.num_questions}
+                  onChange={(e) => setConfig({ ...config, num_questions: +e.target.value })}
+                  className="input-field"
+                >
+                  {[5, 10, 15, 20].map((n) => (
+                    <option key={n} value={n}>{n} questions</option>
+                  ))}
                 </select>
               </div>
               <div>
                 <label className="text-sm font-medium mb-1.5 block">Difficulty</label>
-                <select value={config.difficulty} onChange={(e) => setConfig({ ...config, difficulty: e.target.value })} className="input-field">
+                <select
+                  value={config.difficulty}
+                  onChange={(e) => setConfig({ ...config, difficulty: e.target.value })}
+                  className="input-field"
+                >
                   <option value="easy">Easy</option>
                   <option value="medium">Medium</option>
                   <option value="hard">Hard</option>
@@ -75,12 +160,62 @@ export default function QuizzesPage() {
               </div>
             </div>
 
+            {/* Question Types */}
+            <div className="mb-6">
+              <label className="text-sm font-medium mb-2 block">Question Types</label>
+              <div className="flex gap-2 flex-wrap">
+                {[
+                  { value: "mcq", label: "Multiple Choice" },
+                  { value: "true_false", label: "True / False" },
+                  { value: "short_answer", label: "Short Answer" },
+                ].map((type) => {
+                  const active = config.question_types.includes(type.value);
+                  return (
+                    <button
+                      key={type.value}
+                      onClick={() => {
+                        const types = active
+                          ? config.question_types.filter((t) => t !== type.value)
+                          : [...config.question_types, type.value];
+                        if (types.length > 0) setConfig({ ...config, question_types: types });
+                      }}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
+                        active
+                          ? "border-primary bg-primary/15 text-primary"
+                          : "border-border text-muted-foreground hover:border-primary/50"
+                      }`}
+                    >
+                      {type.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Error */}
+            {generateMutation.isError && (
+              <div className="mb-4 p-3 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-sm flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                {(generateMutation.error as Error)?.message || "Failed to generate quiz. Please try again."}
+              </div>
+            )}
+
             <button
-              onClick={() => generateMutation.mutate(config)}
+              onClick={handleGenerate}
               disabled={generateMutation.isPending}
-              className="btn-primary w-full py-3"
+              className="btn-primary w-full py-3 flex items-center justify-center gap-2"
             >
-              {generateMutation.isPending ? <><Loader2 className="w-4 h-4 animate-spin" /> Generating...</> : <><Sparkles className="w-4 h-4" /> Generate Quiz</>}
+              {generateMutation.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Generating Quiz...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-4 h-4" />
+                  Generate Quiz
+                </>
+              )}
             </button>
           </motion.div>
         )}
@@ -89,9 +224,13 @@ export default function QuizzesPage() {
         {quiz && !result && currentQuestion && (
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-2xl mx-auto">
             {/* Progress */}
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-sm text-muted-foreground">Question {currentQ + 1} of {questions.length}</span>
-              <span className="text-xs px-2 py-1 rounded-md bg-secondary">{currentQuestion.difficulty}</span>
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-sm text-muted-foreground">
+                Question {currentQ + 1} of {questions.length}
+              </span>
+              <span className="text-xs px-2 py-1 rounded-md bg-secondary capitalize">
+                {currentQuestion.difficulty}
+              </span>
             </div>
             <div className="w-full h-2 bg-secondary rounded-full mb-6 overflow-hidden">
               <motion.div
@@ -102,7 +241,7 @@ export default function QuizzesPage() {
 
             <div className="glass-card p-6 mb-4">
               {currentQuestion.topic && (
-                <span className="text-xs text-primary mb-2 block">{currentQuestion.topic}</span>
+                <span className="text-xs text-primary mb-2 block font-medium">{currentQuestion.topic}</span>
               )}
               <h3 className="text-lg font-semibold mb-6">{currentQuestion.question}</h3>
 
@@ -147,8 +286,13 @@ export default function QuizzesPage() {
                   Next
                 </button>
               ) : (
-                <button onClick={handleSubmit} disabled={submitMutation.isPending} className="btn-primary">
-                  {submitMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Submit Quiz"}
+                <button
+                  onClick={handleSubmit}
+                  disabled={submitMutation.isPending}
+                  className="btn-primary flex items-center gap-2"
+                >
+                  {submitMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                  Submit Quiz
                 </button>
               )}
             </div>
@@ -162,14 +306,18 @@ export default function QuizzesPage() {
               <div className={`w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-4 ${
                 result.score >= 70 ? "bg-success/15" : result.score >= 40 ? "bg-warning/15" : "bg-destructive/15"
               }`}>
-                {result.score >= 70 ? <Trophy className="w-10 h-10 text-success" /> : <AlertTriangle className="w-10 h-10 text-warning" />}
+                {result.score >= 70 ? (
+                  <Trophy className="w-10 h-10 text-success" />
+                ) : (
+                  <AlertTriangle className="w-10 h-10 text-warning" />
+                )}
               </div>
-              <h2 className="text-3xl font-bold mb-1">{result.score}%</h2>
+              <h2 className="text-4xl font-bold mb-1">{result.score}%</h2>
               <p className="text-muted-foreground text-sm">
-                {result.correct_answers}/{result.total_questions} correct
+                {result.correct_answers} / {result.total_questions} correct
               </p>
               {result.score < 60 && (
-                <p className="text-xs text-warning mt-2 flex items-center justify-center gap-1">
+                <p className="text-xs text-warning mt-3 flex items-center justify-center gap-1">
                   <Sparkles className="w-3 h-3" /> AI is adapting your roadmap based on performance
                 </p>
               )}
@@ -180,7 +328,9 @@ export default function QuizzesPage() {
                 <h3 className="font-semibold text-sm mb-3">Focus Areas</h3>
                 <div className="flex flex-wrap gap-2">
                   {result.weak_topics.map((t: string, i: number) => (
-                    <span key={i} className="px-3 py-1.5 rounded-lg bg-warning/10 text-warning text-xs border border-warning/20">{t}</span>
+                    <span key={i} className="px-3 py-1.5 rounded-lg bg-warning/10 text-warning text-xs border border-warning/20">
+                      {t}
+                    </span>
                   ))}
                 </div>
               </div>
@@ -192,18 +342,28 @@ export default function QuizzesPage() {
                 <div className="space-y-3">
                   {result.wrong_answers.slice(0, 5).map((w: any, i: number) => (
                     <div key={i} className="p-3 rounded-xl bg-destructive/5 border border-destructive/10">
-                      <p className="text-sm font-medium mb-1">{w.question}</p>
-                      <div className="flex gap-4 text-xs mt-2">
-                        <span className="text-destructive flex items-center gap-1"><XCircle className="w-3 h-3" /> Your: {w.user_answer || "—"}</span>
-                        <span className="text-success flex items-center gap-1"><CheckCircle className="w-3 h-3" /> Correct: {w.correct}</span>
+                      <p className="text-sm font-medium mb-2">{w.question}</p>
+                      <div className="flex gap-4 text-xs">
+                        <span className="text-destructive flex items-center gap-1">
+                          <XCircle className="w-3 h-3" /> Your: {w.user_answer || "—"}
+                        </span>
+                        <span className="text-success flex items-center gap-1">
+                          <CheckCircle className="w-3 h-3" /> Correct: {w.correct}
+                        </span>
                       </div>
+                      {w.explanation && (
+                        <p className="text-xs text-muted-foreground mt-2 italic">{w.explanation}</p>
+                      )}
                     </div>
                   ))}
                 </div>
               </div>
             )}
 
-            <button onClick={() => { setQuiz(null); setResult(null); }} className="btn-primary w-full py-3">
+            <button
+              onClick={() => { setQuiz(null); setResult(null); setSelectedDocs([]); }}
+              className="btn-primary w-full py-3"
+            >
               Take Another Quiz
             </button>
           </motion.div>

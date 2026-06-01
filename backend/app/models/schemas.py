@@ -78,6 +78,7 @@ class ChatRequest(BaseModel):
     message: str
     document_ids: Optional[List[str]] = None
     conversation_id: Optional[str] = None
+    chat_history: Optional[List[dict]] = None  # [{role, content}]
 
 
 class ChatResponse(BaseModel):

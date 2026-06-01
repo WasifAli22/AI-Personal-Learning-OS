@@ -18,6 +18,40 @@ from sentence_transformers import SentenceTransformer
 from app.config import get_settings
 
 
+def _extract_docx_text(file_path: str) -> str:
+    """Extract plain text from a .docx file using python-docx."""
+    try:
+        from docx import Document
+        doc = Document(file_path)
+        paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
+        # Also extract text from tables
+        for table in doc.tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    if cell.text.strip():
+                        paragraphs.append(cell.text.strip())
+        return "\n\n".join(paragraphs)
+    except Exception as e:
+        print(f"[DOCX] Failed to extract with python-docx: {e}")
+        return ""
+
+
+def _extract_pdf_text(file_path: str) -> str:
+    """Extract text from PDF using pypdf (robust, no Java needed)."""
+    try:
+        import pypdf
+        reader = pypdf.PdfReader(file_path)
+        pages_text = []
+        for page in reader.pages:
+            text = page.extract_text()
+            if text and text.strip():
+                pages_text.append(text)
+        return "\n\n".join(pages_text)
+    except Exception as e:
+        print(f"[PDF] pypdf failed: {e}")
+        return ""
+
+
 class RAGPipeline:
     """Complete RAG pipeline: parse → chunk → embed → store → retrieve."""
 
@@ -59,48 +93,23 @@ class RAGPipeline:
         Process a PDF file: extract text, chunk, embed, and store.
         Returns the number of chunks created.
         """
-        # Load PDF
-        loader = PyPDFLoader(file_path)
-        pages = loader.load()
+        # Use robust pypdf extractor
+        full_text = _extract_pdf_text(file_path)
 
-        # Extract and combine text
-        full_text = "\n\n".join([page.page_content for page in pages])
+        if not full_text.strip():
+            # Fallback to langchain loader
+            try:
+                loader = PyPDFLoader(file_path)
+                pages = loader.load()
+                full_text = "\n\n".join([p.page_content for p in pages])
+            except Exception as e:
+                print(f"[PDF] Langchain loader also failed: {e}")
+                return 0
 
         if not full_text.strip():
             return 0
 
-        # Chunk text
-        chunks = self.text_splitter.split_text(full_text)
-
-        if not chunks:
-            return 0
-
-        # Generate embeddings
-        embeddings = self._generate_embeddings(chunks)
-
-        # Prepare metadata
-        ids = [f"{doc_id}_{i}" for i in range(len(chunks))]
-        metadatas = [
-            {
-                "doc_id": doc_id,
-                "user_id": user_id,
-                "chunk_index": i,
-                "source": os.path.basename(file_path),
-                "page": pages[min(i, len(pages) - 1)].metadata.get("page", 0) if pages else 0
-            }
-            for i in range(len(chunks))
-        ]
-
-        # Store in ChromaDB
-        collection = self._get_collection(user_id)
-        collection.add(
-            ids=ids,
-            embeddings=embeddings,
-            documents=chunks,
-            metadatas=metadatas
-        )
-
-        return len(chunks)
+        return await self.process_text(full_text, user_id, doc_id, os.path.basename(file_path))
 
     async def process_text(self, text: str, user_id: str, doc_id: str, source: str = "text") -> int:
         """Process raw text: chunk, embed, and store."""
